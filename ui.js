@@ -4,7 +4,27 @@
    ============================================================ */
 "use strict";
 
-const UI = { deckOpen: false, muted: localStorage.getItem("ordertower_mute") === "1" };
+const UI = { deckOpen: false, muted: localStorage.getItem("ordertower_mute") === "1", spriteOk: false };
+
+/* 卡牌精灵图预加载：assets/cards.png 存在则启用图片卡面 */
+(function () {
+  const img = new Image();
+  img.onload = () => { UI.spriteOk = true; render(); };
+  img.src = CARD_SPRITE.file;
+})();
+
+function cardArtHTML(card) {
+  const idx = ART_ORDER.indexOf(card.id);
+  if (UI.spriteOk && idx >= 0) {
+    const { cols, rows, file } = CARD_SPRITE;
+    const cx = idx % cols, cy = Math.floor(idx / cols);
+    const px = cols > 1 ? (cx / (cols - 1)) * 100 : 0;
+    const py = rows > 1 ? (cy / (rows - 1)) * 100 : 0;
+    // 内层保持正方形按格子等比切片，外层居中裁切，避免拉伸变形
+    return `<div class="card-art"><div class="card-art-img" style="background-image:url('${file}');background-size:${cols * 100}% ${rows * 100}%;background-position:${px}% ${py}%"></div></div>`;
+  }
+  return `<div class="card-art"><span class="art-emoji">${CARD_EMOJI[card.id] || "🎴"}</span></div>`;
+}
 
 const STATUS_LABEL = {
   strength: ["💪", "墨力"], dexterity: ["🧤", "灵巧"], weak: ["🌀", "虚弱"],
@@ -79,6 +99,7 @@ function cardHTML(card, opts = {}) {
       <span class="card-cost">${cost === null ? "✕" : cost}</span>
       <span class="card-name">${name}</span>
     </div>
+    ${cardArtHTML(card)}
     <div class="card-type">${col.name} · ${TYPE_NAME[d.type]}</div>
     <div class="card-desc">${d.desc(card.up)}</div>
     ${flavor}

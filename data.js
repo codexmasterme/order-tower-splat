@@ -403,6 +403,46 @@ defCard({
   flavor: "皮肤下有细小的白线在生长。",
 });
 
+/* ============================================================
+   卡牌插画
+   把 AI 生成的精灵图放到 assets/cards.png 即自动启用；
+   未提供图片时使用下方占位图标 + 配色渐变。
+   ============================================================ */
+const CARD_SPRITE = {
+  file: "assets/cards.png",
+  cols: 7,   // 网格列数
+  rows: 9,   // 网格行数
+};
+/* 精灵图中卡牌的排列顺序（行优先，从左到右、从上到下），共 62 格，末格留空 */
+const ART_ORDER = [
+  "strike", "squid_dash", "twin_splash", "roller_crush", "quick_shot", "brush_sweep", "arc_bomb",
+  "charge_snipe", "trace_arrow", "triple_bomb", "shark_ram", "full_power", "red_resonance", "burst_graffiti",
+  "ult_launcher", "ink_storm_card", "afterimage", "defend", "dodge_roll", "ink_sneak", "bubble_guard",
+  "paint_retreat", "ink_pack", "thorn_film", "hard_coat", "pearl_escort", "blue_resonance", "waterproof",
+  "shield_bash", "ult_bubble", "barricade", "order_undertow", "pearl_call", "ink_refill", "tactic_scope",
+  "paint_mark", "pearl_snack", "flash_idea", "marina_support", "boost_program", "pearl_cheer", "yellow_resonance",
+  "overclock", "ult_station", "palette_link", "memory_replay", "erode_stain", "dilute_spray", "corrupt_splash",
+  "reveal_mist", "siphon_touch", "spore_cloud", "worsen", "purple_resonance", "destabilize", "fade_strike",
+  "abyss_chant", "still_order", "assimilate_blade", "disorder_foam", "faded", "order_brand",
+];
+/* 占位图标（未加载精灵图时显示） */
+const CARD_EMOJI = {
+  strike: "🔫", defend: "🛡️", squid_dash: "🦑", pearl_call: "📢",
+  twin_splash: "💥", roller_crush: "🖌️", quick_shot: "💦", brush_sweep: "🧹", arc_bomb: "💣",
+  charge_snipe: "🔭", trace_arrow: "🏹", triple_bomb: "🎆", shark_ram: "🦈", full_power: "🔥",
+  red_resonance: "🔺", burst_graffiti: "🎨", ult_launcher: "🚀", ink_storm_card: "🌧️", afterimage: "👥",
+  dodge_roll: "🤸", ink_sneak: "🥷", bubble_guard: "🫧", paint_retreat: "🏃", ink_pack: "🎒",
+  thorn_film: "🌵", hard_coat: "🧱", pearl_escort: "🛸", blue_resonance: "🔷", waterproof: "☔",
+  shield_bash: "💢", ult_bubble: "🔵", barricade: "🏰", order_undertow: "🌊",
+  ink_refill: "🧴", tactic_scope: "🔍", paint_mark: "📍", pearl_snack: "🍙", flash_idea: "💡",
+  marina_support: "📡", boost_program: "💾", pearl_cheer: "🎤", yellow_resonance: "🔶", overclock: "⚙️",
+  ult_station: "⛽", palette_link: "🎛️", memory_replay: "📼",
+  erode_stain: "☠️", dilute_spray: "🧪", corrupt_splash: "🫠", reveal_mist: "🌫️", siphon_touch: "🧛",
+  spore_cloud: "☁️", worsen: "📈", purple_resonance: "🟣", destabilize: "📡", fade_strike: "🗡️",
+  abyss_chant: "🌑", still_order: "⏸️", assimilate_blade: "⚔️",
+  disorder_foam: "📻", faded: "⬜", order_brand: "🔖",
+};
+
 /* ---------- 卡牌奖励池 ---------- */
 const CARD_POOL = Object.values(CARDS).filter(c => ["common","uncommon","rare"].includes(c.rarity));
 

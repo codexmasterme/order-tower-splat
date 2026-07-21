@@ -165,17 +165,36 @@ button{font-family:inherit;}
 
 /* ---------- 卡牌 ---------- */
 .card{
-  flex:0 0 128px;width:128px;min-height:150px;border-radius:12px;padding:8px;
+  flex:0 0 132px;width:132px;min-height:210px;border-radius:12px;padding:8px;
   background:linear-gradient(170deg,var(--panel2),var(--panel));
   border:2px solid var(--line);cursor:pointer;user-select:none;position:relative;
   transition:transform .12s,box-shadow .15s;display:flex;flex-direction:column;
 }
 .card:hover{transform:translateY(-6px);}
-.card.small{flex:0 0 118px;width:118px;min-height:128px;}
+.card.small{flex:0 0 120px;width:120px;min-height:178px;}
 .card.small:hover{transform:translateY(-2px);}
 .card.disabled{opacity:.45;cursor:default;}
 .card.disabled:hover{transform:none;}
 .card.selected{transform:translateY(-10px);box-shadow:0 0 18px rgba(255,45,156,.8);border-color:var(--magenta);}
+.card-art{
+  height:62px;border-radius:8px;margin:6px 0 2px;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;
+  background-color:rgba(0,0,0,.35);background-repeat:no-repeat;
+  border:1px solid rgba(255,255,255,.08);
+}
+.card.small .card-art{height:46px;margin:4px 0 2px;}
+.card-art{position:relative;}
+.card-art-img{
+  position:absolute;left:0;top:50%;transform:translateY(-50%);
+  width:100%;aspect-ratio:1/1;background-repeat:no-repeat;
+}
+.art-emoji{font-size:32px;filter:drop-shadow(0 0 8px rgba(255,255,255,.35));}
+.card.small .art-emoji{font-size:26px;}
+.c-red .card-art{background-image:radial-gradient(80% 90% at 50% 20%,rgba(255,59,92,.35),rgba(0,0,0,.4));}
+.c-blue .card-art{background-image:radial-gradient(80% 90% at 50% 20%,rgba(53,167,255,.35),rgba(0,0,0,.4));}
+.c-yellow .card-art{background-image:radial-gradient(80% 90% at 50% 20%,rgba(245,197,24,.32),rgba(0,0,0,.4));}
+.c-purple .card-art{background-image:radial-gradient(80% 90% at 50% 20%,rgba(176,114,255,.35),rgba(0,0,0,.4));}
+.c-gray .card-art{background-image:radial-gradient(80% 90% at 50% 20%,rgba(255,255,255,.22),rgba(0,0,0,.4));}
 .card-top{display:flex;align-items:center;gap:6px;}
 .card-cost{
   flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:#0e2f38;color:var(--cyan);
@@ -288,7 +307,7 @@ button{font-family:inherit;}
 /* ---------- 移动端 ---------- */
 @media (max-width:480px){
   .game-title{font-size:42px;}
-  .card{flex:0 0 116px;width:116px;min-height:142px;}
+  .card{flex:0 0 120px;width:120px;min-height:200px;}
   .enemy{width:132px;}
   .enemy.is-boss{width:170px;}
 }
