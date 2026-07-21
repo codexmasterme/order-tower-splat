@@ -24,6 +24,14 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 /* ---------- 全局状态 ---------- */
 let G = null;      // 局外状态（可存档）
 let C = null;      // 战斗状态（不存档）
+
+/* ---------- 战斗特效事件队列（ui.js 渲染后消费） ---------- */
+let FXQ = [];
+function fx(type, data) {
+  if (!C || C.over) return;
+  if (FXQ.length > 80) FXQ.length = 0;
+  FXQ.push(Object.assign({ type }, data));
+}
 let _uid = 1;
 function newCard(id, up = false) { return { uid: _uid++, id, up: !!up }; }
 
@@ -283,6 +291,7 @@ function startPlayerTurn(first = false) {
   // 玩家侵蚀
   if (C.pstatus.poison > 0) {
     C.log.push(`侵蚀啃噬着你：失去 ${C.pstatus.poison} 点生命。`);
+    fx("pdmg", { amt: C.pstatus.poison, hpLoss: C.pstatus.poison, poison: true });
     G.hp -= C.pstatus.poison;
     C.pstatus.poison--;
     if (checkDefeat()) return;
@@ -418,6 +427,7 @@ async function endTurn() {
     // 敌人侵蚀
     if (en.status.poison > 0) {
       en.hp -= en.status.poison;
+      fx("edmg", { key: en.key, amt: en.status.poison, hpLoss: en.status.poison, poison: true });
       C.log.push(`${en.name} 被侵蚀：失去 ${en.status.poison} 点生命。`);
       if (!C.flags.poisonNoDecay) en.status.poison--;
       render();
@@ -469,6 +479,7 @@ function playerHitEnemy(t, base, isAttack = true) {
   t.block -= blocked;
   const hpLoss = amt - blocked;
   t.hp -= hpLoss;
+  fx("edmg", { key: t.key, amt, hpLoss, dead: t.hp <= 0 });
   if (isAttack && t.status.thorns > 0 && t.hp > 0) {
     C.log.push(`${t.name} 的反墨刺伤了你（${t.status.thorns}）。`);
     hurtPlayer(t.status.thorns, false);
@@ -486,6 +497,7 @@ function hurtPlayer(amt, isAttack = true, attacker = null) {
   C.pblock -= blocked;
   const hpLoss = amt - blocked;
   G.hp -= hpLoss;
+  fx("pdmg", { amt, hpLoss });
   if (isAttack && attacker && C.pstatus.thorns > 0 && attacker.hp > 0) {
     const th = C.pstatus.thorns;
     attacker.hp -= th;
@@ -511,9 +523,11 @@ function applyStatusToEnemy(t, k, n) {
   if (isDebuff && t.status.artifact > 0) {
     t.status.artifact--;
     C.log.push(`${t.name} 的净化层抵消了负面效果。`);
+    fx("estatus", { key: t.key, k: "artifact", n: 0, negated: true });
     return;
   }
   t.status[k] = (t.status[k] || 0) + n;
+  fx("estatus", { key: t.key, k, n });
 }
 
 /* ---------- 玩家侧战斗接口（供卡牌/芯片/特饮调用） ---------- */
@@ -542,15 +556,17 @@ const PCTX = {
   block(n) {
     let amt = n + (C.pstatus.dexterity || 0);
     if (C.pstatus.frail > 0) amt = Math.floor(amt * 0.75);
-    C.pblock += Math.max(0, amt);
+    amt = Math.max(0, amt);
+    C.pblock += amt;
+    fx("pblock", { amt });
   },
   draw(n) { drawCards(n); },
-  energy(n) { C.energy += n; },
-  heal(n) { G.hp = clamp(G.hp + n, 0, G.maxHp); },
-  loseHp(n) { G.hp -= n; checkDefeat(); },
+  energy(n) { C.energy += n; if (n > 0) fx("penergy", { n }); },
+  heal(n) { G.hp = clamp(G.hp + n, 0, G.maxHp); fx("pheal", { n }); },
+  loseHp(n) { G.hp -= n; fx("pdmg", { amt: n, hpLoss: n }); checkDefeat(); },
   apply(t, k, n) { applyStatusToEnemy(t, k, n); },
   applyAll(k, n) { for (const en of C.enemies) if (en.hp > 0) applyStatusToEnemy(en, k, n); },
-  applySelf(k, n) { C.pstatus[k] = (C.pstatus[k] || 0) + n; },
+  applySelf(k, n) { C.pstatus[k] = (C.pstatus[k] || 0) + n; fx("pstatus", { k, n }); },
   cleanse() { for (const k of ["weak", "vulnerable", "frail", "poison"]) delete C.pstatus[k]; },
   myBlock() { return C.pblock; },
   playedThisTurn(key) { return (C.played && C.played[key]) || 0; },
@@ -573,9 +589,9 @@ const ECTX = {
       hurtPlayer(dmg, true, self);
     }
   },
-  gainBlock(self, n) { self.block += n; },
-  buff(self, k, n) { self.status[k] = (self.status[k] || 0) + n; },
-  debuff(k, n) { C.pstatus[k] = (C.pstatus[k] || 0) + n; },
+  gainBlock(self, n) { self.block += n; fx("eblock", { key: self.key, n }); },
+  buff(self, k, n) { self.status[k] = (self.status[k] || 0) + n; fx("estatus", { key: self.key, k, n, buff: true }); },
+  debuff(k, n) { C.pstatus[k] = (C.pstatus[k] || 0) + n; fx("pstatus", { k, n }); },
   allies() { return C.enemies.filter(e => e.hp > 0); },
   addStatusToPlayer(id, count) {
     for (let i = 0; i < count; i++) C.discard.push({ uid: _uid++, id, up: false });

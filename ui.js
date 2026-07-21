@@ -4,7 +4,7 @@
    ============================================================ */
 "use strict";
 
-const UI = { deckOpen: false, muted: localStorage.getItem("ordertower_mute") === "1", spriteOk: false };
+const UI = { deckOpen: false, muted: localStorage.getItem("ordertower_mute") === "1", spriteOk: false, animLock: false };
 
 /* 卡牌精灵图预加载：assets/cards.png 存在则启用图片卡面 */
 (function () {
@@ -94,7 +94,7 @@ function cardHTML(card, opts = {}) {
     opts.small ? "small" : "",
   ].join(" ");
   const flavor = d.flavor && !opts.small ? `<div class="card-flavor">${d.flavor}</div>` : "";
-  return `<div class="${cls}" ${opts.onclick ? `onclick="${opts.onclick}"` : ""}>
+  return `<div class="${cls}" data-uid="${card.uid}" ${opts.onclick ? `onclick="${opts.onclick}"` : ""}>
     <div class="card-top">
       <span class="card-cost">${cost === null ? "✕" : cost}</span>
       <span class="card-name">${name}</span>
@@ -163,6 +163,7 @@ function render() {
   // 覆盖层
   if (G.pick) el.insertAdjacentHTML("beforeend", pickHTML());
   if (UI.deckOpen) el.insertAdjacentHTML("beforeend", deckHTML());
+  flushFX();
 }
 
 /* ---------- 标题 ---------- */
@@ -264,7 +265,7 @@ function combatHTML() {
     const intent = m ? `<div class="intent" title="${m.name}">${m.icon} ${m.name}${idmg !== null ? ` <b>${idmg}${m.times ? "×" + m.times : ""}</b>` : ""}</div>` : "";
     const targetable = C.selected !== null;
     const acting = C.actingEnemy === en.key;
-    return `<div class="enemy ${targetable ? "targetable" : ""} ${acting ? "acting" : ""} ${en.boss ? "is-boss" : ""}" onclick="handleEnemyClick(${en.key})">
+    return `<div id="en-${en.key}" class="enemy ${targetable ? "targetable" : ""} ${acting ? "acting" : ""} ${en.boss ? "is-boss" : ""}" onclick="handleEnemyClick(${en.key})">
       ${intent}
       <div class="enemy-emoji">${en.emoji}</div>
       <div class="enemy-name">${en.name}</div>
@@ -290,7 +291,7 @@ function combatHTML() {
     <div class="enemy-zone">${enemies}</div>
     <div class="battle-log">${logs}</div>
     <div class="player-zone">
-      <div class="player-stats">
+      <div class="player-stats" id="player-panel">
         <span class="pstat energy" title="墨水">🖋 <b>${C.energy}</b>/${G.energyMax + (C.pstatus.energyPerTurn || 0)}</span>
         <span class="pstat" title="墨甲">🛡 <b>${C.pblock}</b></span>
         <span class="pstat" title="牌堆：抽牌/弃牌/消耗">📚 ${C.draw.length} / 🗑 ${C.discard.length} / 🕳 ${C.exhaust.length}</span>
@@ -501,6 +502,143 @@ function deckHTML() {
 }
 
 /* ============================================================
+   战斗特效：飘字 / 墨渍 / 屏障 / 震动 / 卡牌飞行
+   ============================================================ */
+const BUFF_KEYS = new Set(["strength", "dexterity", "thorns", "barricade", "droneGuard", "inkStorm",
+  "poisonAura", "healPerTurn", "energyPerTurn", "drawPerTurn", "afterimage", "paletteLink", "undertow", "undertowPlus"]);
+
+function fxLayer() {
+  let l = document.getElementById("fx-layer");
+  if (!l) { l = document.createElement("div"); l.id = "fx-layer"; document.body.appendChild(l); }
+  return l;
+}
+function rectOf(sel) {
+  const el = document.querySelector(sel);
+  if (el) return el.getBoundingClientRect();
+  return { left: innerWidth / 2 - 40, top: innerHeight / 2 - 40, width: 80, height: 80 };
+}
+function spawnNum(r, text, cls, delay = 0) {
+  const d = document.createElement("div");
+  d.className = "fx-num " + cls;
+  d.textContent = text;
+  d.style.left = (r.left + r.width / 2 - 20 + (Math.random() - 0.5) * 36) + "px";
+  d.style.top = (r.top + r.height * 0.28 + (Math.random() - 0.5) * 12) + "px";
+  d.style.animationDelay = delay + "ms";
+  fxLayer().appendChild(d);
+  setTimeout(() => d.remove(), 1100 + delay);
+}
+function spawnSplat(r, color, delay = 0) {
+  const d = document.createElement("div");
+  d.className = "fx-splat";
+  if (color) d.style.background = `radial-gradient(circle, ${color} 0%, transparent 70%)`;
+  d.style.left = (r.left + r.width / 2 - 35) + "px";
+  d.style.top = (r.top + r.height * 0.32 - 35) + "px";
+  d.style.animationDelay = delay + "ms";
+  fxLayer().appendChild(d);
+  setTimeout(() => d.remove(), 600 + delay);
+}
+function spawnOverlay(cls, ms) {
+  const d = document.createElement("div");
+  d.className = cls;
+  fxLayer().appendChild(d);
+  setTimeout(() => d.remove(), ms);
+}
+function spawnRing(r) {
+  const d = document.createElement("div");
+  d.className = "fx-powerring";
+  d.style.left = (r.left + r.width / 2 - 60) + "px";
+  d.style.top = (r.top + r.height / 2 - 60) + "px";
+  fxLayer().appendChild(d);
+  setTimeout(() => d.remove(), 700);
+}
+function shakeEl(sel) {
+  const el = document.querySelector(sel);
+  if (!el) return;
+  el.classList.remove("hit"); void el.offsetWidth;
+  el.classList.add("hit");
+  setTimeout(() => el.classList.remove("hit"), 400);
+}
+
+function flushFX() {
+  if (typeof FXQ === "undefined" || !FXQ.length) return;
+  const evs = FXQ.splice(0);
+  let shield = false, vig = false, hitSnd = false;
+  const perTarget = {};   // 同一目标多段伤害错峰
+  for (const e of evs) {
+    const tkey = e.type + (e.key || "p");
+    const idx = perTarget[tkey] = (perTarget[tkey] || 0);
+    perTarget[tkey]++;
+    const delay = idx * 130;
+    switch (e.type) {
+      case "edmg": {
+        const r = rectOf("#en-" + e.key);
+        spawnNum(r, "-" + e.amt, e.poison ? "poisonn" : (e.amt >= 15 ? "dmg big" : "dmg"), delay);
+        if (e.hpLoss > 0) spawnSplat(r, e.poison ? "rgba(176,114,255,.8)" : null, delay);
+        if (idx === 0) shakeEl("#en-" + e.key);
+        hitSnd = true;
+        break;
+      }
+      case "eblock": {
+        spawnNum(rectOf("#en-" + e.key), "+" + e.n + " 🛡", "blockn", delay);
+        break;
+      }
+      case "estatus": {
+        const lab = STATUS_LABEL[e.k] || ["", e.k];
+        const txt = e.negated ? "✨抵消" : `${lab[0]}${lab[1]}${e.n > 0 ? " +" + e.n : " " + e.n}`;
+        spawnNum(rectOf("#en-" + e.key), txt, e.buff ? "buffn" : "statusn", 150 + delay);
+        break;
+      }
+      case "pdmg": {
+        const r = rectOf("#player-panel");
+        spawnNum(r, "-" + e.amt, e.poison ? "poisonn" : (e.amt >= 15 ? "pdmgn big" : "pdmgn"), delay);
+        if (idx === 0) { shakeEl(".player-zone"); }
+        if (e.hpLoss > 0) vig = true;
+        hitSnd = true;
+        break;
+      }
+      case "pblock": {
+        spawnNum(rectOf("#player-panel"), "+" + e.amt + " 🛡", "blockn", delay);
+        shield = true;
+        break;
+      }
+      case "pheal": spawnNum(rectOf("#player-panel"), "+" + e.n + " ❤", "healn", delay); break;
+      case "penergy": spawnNum(rectOf("#player-panel"), "+" + e.n + " 🖋", "energyn", delay); break;
+      case "pstatus": {
+        const lab = STATUS_LABEL[e.k] || ["", e.k];
+        const buff = BUFF_KEYS.has(e.k) || (e.k === "strength" && e.n > 0);
+        spawnNum(rectOf("#player-panel"), `${lab[0]}${lab[1]}${e.n > 0 ? " +" + e.n : ""}`, buff ? "buffn" : "statusn", 120 + delay);
+        if (buff) spawnRing(rectOf("#player-panel"));
+        break;
+      }
+    }
+  }
+  if (shield) { spawnOverlay("fx-shield", 650); sfx("block"); }
+  if (vig) spawnOverlay("fx-vignette", 500);
+  if (hitSnd) sfx("hit");
+}
+
+/* 卡牌飞向目标的动画，结束后执行 then() */
+function flyCard(uid, targetSel, then) {
+  const cardEl = document.querySelector(`.hand .card[data-uid="${uid}"]`);
+  if (!cardEl) { then(); return; }
+  const r = cardEl.getBoundingClientRect();
+  const clone = cardEl.cloneNode(true);
+  clone.classList.add("fx-flycard");
+  clone.classList.remove("selected");
+  Object.assign(clone.style, { left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
+  document.body.appendChild(clone);
+  cardEl.style.visibility = "hidden";
+  const tr = rectOf(targetSel);
+  requestAnimationFrame(() => {
+    const dx = tr.left + tr.width / 2 - (r.left + r.width / 2);
+    const dy = tr.top + tr.height / 2 - (r.top + r.height / 2);
+    clone.style.transform = `translate(${dx}px, ${dy}px) scale(.42) rotate(${(Math.random() * 14 - 7).toFixed(1)}deg)`;
+  });
+  setTimeout(() => { clone.classList.add("impact"); }, 200);
+  setTimeout(() => { clone.remove(); UI.animLock = false; then(); }, 250);
+}
+
+/* ============================================================
    交互入口（inline onclick 调用）
    ============================================================ */
 function startNewRun() { sfx("click"); newGame(); render(); }
@@ -522,7 +660,7 @@ function clickBoss() {
   enterNode(G.map.boss); render();
 }
 function handleCardClick(uid) {
-  if (C.busy || C.over) return;
+  if (C.busy || C.over || UI.animLock) return;
   const card = C.hand.find(c => c.uid === uid);
   if (!card) return;
   if (C.selected === uid) { C.selected = null; render(); return; }
@@ -531,14 +669,22 @@ function handleCardClick(uid) {
   const alive = C.enemies.filter(e => e.hp > 0);
   if (d.target === "enemy" && alive.length > 1) { C.selected = uid; sfx("click"); render(); return; }
   sfx("play");
-  playCard(uid, alive.length === 1 ? alive[0].key : null);
+  // 目标位置：单体攻击→敌人；全体→敌阵中心；自身/能力→玩家面板
+  let sel = "#player-panel";
+  if (d.target === "enemy" && alive.length === 1) sel = "#en-" + alive[0].key;
+  else if (d.target === "allEnemies") sel = ".enemy-zone";
+  UI.animLock = true;
+  const targetKey = alive.length === 1 ? alive[0].key : null;
+  flyCard(uid, sel, () => playCard(uid, targetKey));
 }
 function handleEnemyClick(key) {
-  if (!C || C.selected === null) return;
+  if (!C || C.selected === null || UI.animLock) return;
   sfx("play");
-  playCard(C.selected, key);
+  const uid = C.selected;
+  UI.animLock = true;
+  flyCard(uid, "#en-" + key, () => playCard(uid, key));
 }
-function endTurnClick() { sfx("click"); endTurn(); }
+function endTurnClick() { if (UI.animLock) return; sfx("click"); endTurn(); }
 function takeRewardCardClick(id) { sfx("click"); takeRewardCard(id); }
 function skipRewardCard() { sfx("click"); G.reward.cardTaken = true; saveGame(); render(); }
 function openDeck() { sfx("click"); UI.deckOpen = true; render(); }
